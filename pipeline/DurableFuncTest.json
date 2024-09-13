@@ -1,0 +1,172 @@
+{
+	"name": "DurableFuncTest",
+	"properties": {
+		"activities": [
+			{
+				"name": "Durable Azure Function",
+				"type": "AzureFunctionActivity",
+				"dependsOn": [
+					{
+						"activity": "Get File Metadata",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"functionName": "orchestrators/IndexFileCreatorOrchestrator",
+					"body": {
+						"value": "@concat('{\n    \"storage_account\":\"', pipeline().parameters.StorageAccount, '\",\n    \"src_container_name\": \"', pipeline().parameters.ContainerName,'/',pipeline().parameters.InputDirectorName, '\",\n    \"source_file_name\": \"', pipeline().parameters.FileName, '\",\n\t\"file_size\": \"', string(activity('Get File Metadata').output.size), '\",\n\t\"last_modified\": \"', activity('Get File Metadata').output.lastModified, '\",\n\t\"rows_written\": \"', string(variables('RecordsCount')),'\"\n}')",
+						"type": "Expression"
+					},
+					"method": "POST"
+				},
+				"linkedServiceName": {
+					"referenceName": "DurableAzureFunction",
+					"type": "LinkedServiceReference"
+				}
+			},
+			{
+				"name": "Get File Metadata",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "FuncTestJson",
+						"type": "DatasetReference",
+						"parameters": {
+							"DirectoryName": {
+								"value": "@pipeline().parameters.InputDirectorName",
+								"type": "Expression"
+							},
+							"FileName": {
+								"value": "@pipeline().parameters.FileName",
+								"type": "Expression"
+							},
+							"ContainerName": {
+								"value": "@pipeline().parameters.ContainerName",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"size",
+						"lastModified"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "JsonReadSettings"
+					}
+				}
+			},
+			{
+				"name": "Web1",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "Durable Azure Function",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "GET",
+					"url": {
+						"value": "@activity('Durable Azure Function').output.statusQueryGetUri",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "If Condition1",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Web1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(activity('Web1').output.runtimeStatus, 'Failed')",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "Fail1",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "@activity('Web1').output.output",
+									"type": "Expression"
+								},
+								"errorCode": "1"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"ContainerName": {
+				"type": "string",
+				"defaultValue": "data"
+			},
+			"InputDirectorName": {
+				"type": "string",
+				"defaultValue": "in"
+			},
+			"FileName": {
+				"type": "string",
+				"defaultValue": "en_visual_studio_enterprise_2015_with_update_3_x86_x64_dvd_8923288.iso"
+			},
+			"StorageAccount": {
+				"type": "string",
+				"defaultValue": "strgaccdataflowtest"
+			}
+		},
+		"variables": {
+			"RecordsCount": {
+				"type": "String",
+				"defaultValue": "10022"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-06-02T07:33:24Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

@@ -1,0 +1,9 @@
+{
+	"name": "adf-dataflowtest",
+	"location": "germanywestcentral",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "3bf94434-cdc2-4005-8f22-85648dd7e400",
+		"tenantId": "1ca8bd94-3c97-4fc6-8955-bad266b43f0b"
+	}
+}

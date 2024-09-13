@@ -1,0 +1,412 @@
+{
+	"name": "pipeline2",
+	"properties": {
+		"activities": [
+			{
+				"name": "GetZipFiles",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "BinaryZip",
+						"type": "DatasetReference",
+						"parameters": {
+							"Container": {
+								"value": "@pipeline().parameters.Container",
+								"type": "Expression"
+							},
+							"FileNamePattern": {
+								"value": "@pipeline().parameters.ZipFile",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "BinaryReadSettings"
+					}
+				}
+			},
+			{
+				"name": "ForEachZipFile",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "FilesOnly",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('FilesOnly').output.value",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Unzip Files",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "BinarySource",
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": false,
+										"wildcardFileName": {
+											"value": "@item().name",
+											"type": "Expression"
+										},
+										"deleteFilesAfterCompletion": false
+									},
+									"formatSettings": {
+										"type": "BinaryReadSettings",
+										"compressionProperties": {
+											"type": "ZipDeflateReadSettings",
+											"preserveZipFileNameAsFolder": false
+										}
+									}
+								},
+								"sink": {
+									"type": "BinarySink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings",
+										"copyBehavior": "PreserveHierarchy"
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "BinaryZip",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@pipeline().parameters.Container",
+											"type": "Expression"
+										},
+										"FileNamePattern": {
+											"value": "@pipeline().parameters.ZipFile",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "Unziped",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@pipeline().parameters.Container",
+											"type": "Expression"
+										},
+										"Dir": {
+											"value": "@pipeline().parameters.UnzipDir",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "Copy data to DB",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Unzip Files",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "JsonSource",
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "JsonReadSettings"
+									}
+								},
+								"sink": {
+									"type": "AzureSqlSink",
+									"preCopyScript": {
+										"value": "@{concat('truncate table dbo.',pipeline().parameters.Targettable)}",
+										"type": "Expression"
+									},
+									"writeBehavior": "insert",
+									"sqlWriterUseTableLock": false,
+									"disableMetricsCollection": false
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_SrcJson",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@pipeline().parameters.Container",
+											"type": "Expression"
+										},
+										"Dir": {
+											"value": "@pipeline().parameters.UnzipDir",
+											"type": "Expression"
+										},
+										"Filename": {
+											"value": "@replace(item().name,'.zip','.json')",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "TrgDB",
+									"type": "DatasetReference",
+									"parameters": {
+										"Tablename": {
+											"value": "@pipeline().parameters.Targettable",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "DeleteFiles",
+							"type": "Delete",
+							"dependsOn": [
+								{
+									"activity": "MergeTable",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "Unziped",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@pipeline().parameters.Container",
+											"type": "Expression"
+										},
+										"Dir": {
+											"value": "@pipeline().parameters.UnzipDir",
+											"type": "Expression"
+										}
+									}
+								},
+								"enableLogging": false,
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": true,
+									"wildcardFileName": {
+										"value": "@{concat(substring(item().name,0,45),'*.*')}",
+										"type": "Expression"
+									},
+									"enablePartitionDiscovery": false
+								}
+							}
+						},
+						{
+							"name": "MoveFile2Archive",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "DeleteFiles",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "BinarySource",
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": false,
+										"deleteFilesAfterCompletion": true
+									},
+									"formatSettings": {
+										"type": "BinaryReadSettings"
+									}
+								},
+								"sink": {
+									"type": "BinarySink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "BinaryArchive",
+									"type": "DatasetReference",
+									"parameters": {
+										"ArchiveContainer": {
+											"value": "@pipeline().parameters.Container",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "BinaryArchive",
+									"type": "DatasetReference",
+									"parameters": {
+										"ArchiveContainer": {
+											"value": "@pipeline().parameters.ArchiveContainer",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@concat(string(utcnow('yyyy-MM')),'/',item().name)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "MergeTable",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy data to DB",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[dbo].[copyTable]"
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_SqlDatabase",
+								"type": "LinkedServiceReference"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "FilesOnly",
+				"type": "Filter",
+				"dependsOn": [
+					{
+						"activity": "GetZipFiles",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('GetZipFiles').output.childItems",
+						"type": "Expression"
+					},
+					"condition": {
+						"value": "@equals(item().type,'File')",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"Container": {
+				"type": "string",
+				"defaultValue": "import"
+			},
+			"ZipFile": {
+				"type": "string",
+				"defaultValue": "*.zip"
+			},
+			"UnzipDir": {
+				"type": "string",
+				"defaultValue": "unzip"
+			},
+			"ArchiveContainer": {
+				"type": "string",
+				"defaultValue": "archive"
+			},
+			"Targettable": {
+				"type": "string",
+				"defaultValue": "Testtable"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-01-27T12:35:57Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

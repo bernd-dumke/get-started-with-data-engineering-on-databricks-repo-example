@@ -1,0 +1,84 @@
+{
+	"name": "dataflow1",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "ds_data",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "okdata",
+						"type": "DatasetReference"
+					},
+					"name": "okdata"
+				},
+				{
+					"dataset": {
+						"referenceName": "faildata",
+						"type": "DatasetReference"
+					},
+					"name": "faildata"
+				}
+			],
+			"transformations": [
+				{
+					"name": "split1"
+				}
+			],
+			"scriptLines": [
+				"parameters{",
+				"     checkexpression as string (\"toBoolean('(! isNull(firstname)) || (trim(firstname) == '')')\")",
+				"}",
+				"source(output(",
+				"          id as string,",
+				"          name as string,",
+				"          firstname as string,",
+				"          year as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false) ~> source1",
+				"source1 split(toBoolean(expr($checkexpression)),",
+				"     disjoint: false) ~> split1@(okdata, faildata)",
+				"split1@okdata sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          id as string,",
+				"          name as string,",
+				"          firstname as string,",
+				"          year as string",
+				"     ),",
+				"     partitionFileNames:['ok.csv'],",
+				"     umask: 0022,",
+				"     preCommands: [],",
+				"     postCommands: [],",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     partitionBy('hash', 1)) ~> okdata",
+				"split1@faildata sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          id as string,",
+				"          name as string,",
+				"          firstname as string,",
+				"          year as string",
+				"     ),",
+				"     partitionFileNames:['fail.csv'],",
+				"     umask: 0022,",
+				"     preCommands: [],",
+				"     postCommands: [],",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     partitionBy('hash', 1)) ~> faildata"
+			]
+		}
+	}
+}
